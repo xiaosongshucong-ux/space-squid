@@ -23,10 +23,11 @@ export const server = (serv: Server) => {
   serv.customRemovePlayerBreakTime = (uuid: string) => {
     delete serv.customPlayersBreakTime[uuid]
 
-    // Send empty config to the player if they're online
+    // Send the empty configuration to the player if they're online,
+    // even though the server-side entry has just been removed
     const player = serv.uuidToPlayer[uuid]
     if (player) {
-      player.sendBreakTimeConfig()
+      player.sendBreakTimeConfig(true)
     }
   }
 }
@@ -36,8 +37,10 @@ export const player = async (player: Player, serv: Server) => {
     const config = serv.customPlayersBreakTime[player.uuid]
     if (!config) return undefined
 
+    // An omitted tool list means "any tool", mirroring the client serializer
+    const toolNames = config.toolNames ?? []
     const heldItemName = player.inventory.slots[36 + player.heldItemSlot]?.name
-    if (config.toolNames.length > 0 && !config.toolNames.includes(heldItemName ?? '')) {
+    if (toolNames.length > 0 && !toolNames.includes(heldItemName ?? '')) {
       return undefined
     }
 
@@ -60,10 +63,12 @@ export const player = async (player: Player, serv: Server) => {
     player.sendBreakTimeConfig()
   })
 
-  player.sendBreakTimeConfig = () => {
-    if (!serv.customPlayersBreakTime[player.uuid]) return
-
+  player.sendBreakTimeConfig = (force = false) => {
     const config = serv.customPlayersBreakTime[player.uuid]
+    // Unconfigured logins send nothing; a forced send (removal) still emits the
+    // empty payload so the client drops the override it was running with
+    if (!config && !force) return
+
     const data = {
       customBreakTime: config?.blocks ?? {},
       customBreakTimeToolAllowance: config?.toolNames ?? [],
@@ -100,6 +105,6 @@ declare global {
   interface Player {
     customGetBreakTime: (block: Block) => number | undefined
     /** @internal */
-    sendBreakTimeConfig: () => void
+    sendBreakTimeConfig: (force?: boolean) => void
   }
 }
